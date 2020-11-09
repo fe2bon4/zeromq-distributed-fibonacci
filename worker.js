@@ -14,16 +14,18 @@ receiver.connect('tcp://localhost:5557');
 sender.connect('tcp://localhost:5558');
 
 
+const { promisify } = require('util')
+const sleep = promisify(setTimeout)
+
+
 receiver.on('message', async function(buf) {
   const [ next, current ] = buf.toString().split(' ')
   const message = `${parseInt(next)+parseInt(current)}`
   // simple progress indicator for the viewer
 
-
+  
   await sender.send(message)
   console.log(buf.toString(),`sent ${message}`);
-
-
 });
 
 process.on('SIGINT', function() {
