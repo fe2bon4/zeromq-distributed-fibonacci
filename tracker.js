@@ -10,11 +10,13 @@ receiver.bindSync("tcp://*:5558");
 const { promisify } = require('util')
 const sleep = promisify(setTimeout)
 
-
-
 async function* fib (n = 10) {
+  let current = 0;
+  let next = 1;
+  
   async function* streamify(element, event) {
     const pushQueue = [current, next]
+    let yield_count = n
   
     const sortAscending =  (a, b) => a-b
   
@@ -22,12 +24,18 @@ async function* fib (n = 10) {
   
     element.on(event, handler)
   
-    while (pushQueue.length)  
-      yield result = pushQueue.sort(sortAscending).shift()
+    while (yield_count) {
+      const result = pushQueue.sort(sortAscending).shift()
+
+      if(result !== undefined) {
+        await sleep(100)
+        yield result
+        yield_count--
+      }
+    }  
   }
 
-  let current = 0;
-  let next = 1;
+  
 
   const response_generator = streamify(receiver,'message')
 
@@ -36,7 +44,6 @@ async function* fib (n = 10) {
   let interval = setInterval(() => {
     [current, next] = [next, current + next];
     sender.send( `${next} ${current}`)
-
     if(!(n--)) {
       clearInterval( interval)
     }
@@ -46,7 +53,7 @@ async function* fib (n = 10) {
 
   // Waiting for Responses
   for await ( const result of response_generator) {
-    await sleep(1000)
+    await sleep(500)
     if(result === undefined) {
       continue
     }
@@ -59,7 +66,7 @@ const main = async () => {
   
 
   process.stdin.on('data',async () => {
-    const generator =  fib(30)
+    const generator =  fib(10)
     for await( const num of generator) {
       console.log(num)
       
