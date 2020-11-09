@@ -8,110 +8,102 @@ const receiver = zmq.socket('pull');
 receiver.bindSync("tcp://*:5558");
 
 const { promisify } = require('util')
-const sleep = promisify(setTimeout)
 const defer = promisify(setImmediate)
-
-const {
-  NUMBER = '10'
-} = process.env
-
-async function* fib(n = 10) {
+const sleep = promisify(setTimeout)
+async function* fib(n = 0) {
   let current = 0;
   let next = 1;
 
   async function* streamify(element, event) {
-    let pushQueue = [current, next]
-    let yield_count = n + 1
+    let pushQueue = []
+    let yield_count = n - 1
 
     const sortAscending = (a, b) => a - b
 
     const handler = (buf) => {
-
-      if (pushQueue.length) {
-        // Sort Items in order before pushing. items from workers may come out of order. 
-        pushQueue = pushQueue.sort(sortAscending)
-      }
-      pushQueue.push(parseInt(buf.toString()))
+      const result = parseInt(buf.toString())
+      console.log(`@Reciever: Got: ${result}`)
+      pushQueue.push(result)
     }
 
     element.on(event, handler)
 
     // Await expected number of values
-    while (yield_count) {
-      // Trap underflowing queue here.
-      if (!pushQueue.length) {
-        // Defer execution to next even loop iteration, as not to block the event loop.
-        await defer()
-        continue
-      }
-
-      // Yield the queue 
-      yield pushQueue.shift()
-      yield_count--
-
+    while (yield_count > pushQueue.length) {
+      await defer() // Defer loop execution to next event_loop interval.
     }
+    // Yield the queue 
+    yield pushQueue.sort(sortAscending).slice(0, yield_count)
 
     // cleanup the event emmitter on done.
     element.removeListener(event, handler)
     return
   }
 
-
-
+  // Streamify the responses from workers
   const response_generator = streamify(receiver, 'message')
 
   console.log("Sending tasks to workers...");
 
+  // Send out the first task
   sender.send(`${next} ${current}`)
 
-  const schedule = () => {
+  let count = n - 2
+  // Scheduler function
+  const schedule = async () => {
     [current, next] = [next, current + next];
+    console.log(`Sending Job: ${next} ${current} `)
     sender.send(`${next} ${current}`)
-    if ((n--)) {
+
+    // While n > 0, schedule the execution of the scheduler function on the next event_loop iteration.
+    if ((count--)) {
       setImmediate(schedule)
     }
   }
 
+  // schedule the execution of the scheduler function on the next event_loop iteration.
   setImmediate(schedule)
 
   // Waiting for Responses
   for await (const result of response_generator) {
-
-    if (result === undefined) {
-      await defer()
-    } else {
-      yield result
-    }
-
+    yield result
   }
   return
 }
 
-async function* input_stream(stream = process.stdin) {
+async function* input_stream(stream = process.stdin, event = 'data') {
   const buffer = []
   const handler = (buff) => buffer.push(buff.toString())
-  stream.on('data', handler)
+  stream.on(event, handler)
 
   while (true) {
     if (!buffer.length) {
-      await sleep(1000)
+      await defer()
+      continue
     } else {
       const item = buffer.shift()
       yield item
     }
-
   }
 }
 
 const main = async () => {
-  const input_message = 'Enter Number:\t'
+  const input_message = 'Enter Positive Number:\t'
+  const error_message = 'Please Enter a valid number'
   process.stdout.write(input_message)
   for await (const input of input_stream(process.stdin)) {
+    const number = parseInt(input)
 
-    const generator = fib(parseInt(input))
-    for await (const num of generator) {
-      console.log(num)
+    if (number) {
+      const generator = fib(Math.abs(number) || 0)
+      for await (const num of generator) {
+        console.log(num)
+      }
+    } else {
+      console.log(error_message)
     }
+
+    await sleep(100)
     process.stdout.write(input_message)
   }
 

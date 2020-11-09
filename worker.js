@@ -19,7 +19,7 @@ receiver.on('message', async function (buf) {
 
 
   await sender.send(message)
-  console.log(`${current} + ${next}`, `sent ${message}`);
+  console.log(`${current} + ${next} = ${message}`);
 });
 
 process.on('SIGINT', function () {
