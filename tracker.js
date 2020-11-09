@@ -20,26 +20,38 @@ async function* fib(n = 10) {
   let next = 1;
 
   async function* streamify(element, event) {
-    const pushQueue = [current, next]
+    let pushQueue = [current, next]
     let yield_count = n + 1
 
     const sortAscending = (a, b) => a - b
 
-    const handler = (buf) => pushQueue.push(parseInt(buf.toString()))
+    const handler = (buf) => {
+
+      if (pushQueue.length) {
+        // Sort Items in order before pushing. items from workers may come out of order. 
+        pushQueue = pushQueue.sort(sortAscending)
+      }
+      pushQueue.push(parseInt(buf.toString()))
+    }
 
     element.on(event, handler)
 
+    // Await expected number of values
     while (yield_count) {
+      // Trap underflowing queue here.
       if (!pushQueue.length) {
+        // Defer execution to next even loop iteration, as not to block the event loop.
         await defer()
         continue
       }
 
-      const result = pushQueue.sort(sortAscending).shift()
-      yield result
+      // Yield the queue 
+      yield pushQueue.shift()
       yield_count--
 
     }
+
+    // cleanup the event emmitter on done.
     element.removeListener(event, handler)
     return
   }
@@ -51,16 +63,16 @@ async function* fib(n = 10) {
   console.log("Sending tasks to workers...");
 
   sender.send(`${next} ${current}`)
-  let interval = setInterval(() => {
+
+  const schedule = () => {
     [current, next] = [next, current + next];
     sender.send(`${next} ${current}`)
-    if (!(n--)) {
-      clearInterval(interval)
+    if ((n--)) {
+      setImmediate(schedule)
     }
-  });
+  }
 
-
-
+  setImmediate(schedule)
 
   // Waiting for Responses
   for await (const result of response_generator) {
@@ -75,32 +87,34 @@ async function* fib(n = 10) {
   return
 }
 
-async function* input_stream(stream) {
+async function* input_stream(stream = process.stdin) {
   const buffer = []
-  const handler = (buff) => buffer.push(buff.toString)
+  const handler = (buff) => buffer.push(buff.toString())
   stream.on('data', handler)
 
   while (true) {
     if (!buffer.length) {
       await sleep(1000)
-      continue
+    } else {
+      const item = buffer.shift()
+      yield item
     }
-    yield buffer.shift()
+
   }
 }
 
 const main = async () => {
+  const input_message = 'Enter Number:\t'
+  process.stdout.write(input_message)
+  for await (const input of input_stream(process.stdin)) {
 
-  const input = input_stream(process.stdin)
-
-  process.stdout.write('Enter Number:\t')
-  for await (const item of input) {
-    const generator = fib(parseInt(item))
+    const generator = fib(parseInt(input))
     for await (const num of generator) {
       console.log(num)
     }
-    process.stdout.write('Enter Number:\t')
+    process.stdout.write(input_message)
   }
+
 }
 
 main()

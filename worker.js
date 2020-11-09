@@ -5,30 +5,24 @@
 // Connects PUSH socket to tcp://localhost:5558
 // Sends results to sink via that socket
 
-var zmq      = require('zeromq')
+var zmq = require('zeromq')
   , receiver = zmq.socket('pull')
-  , sender   = zmq.socket('push');
+  , sender = zmq.socket('push');
 
 
 receiver.connect('tcp://localhost:5557');
 sender.connect('tcp://localhost:5558');
 
+receiver.on('message', async function (buf) {
+  const [next, current] = buf.toString().split(' ')
+  const message = `${parseInt(current) + parseInt(next)}`
 
-const { promisify } = require('util')
-const sleep = promisify(setTimeout)
 
-
-receiver.on('message', async function(buf) {
-  const [ next, current ] = buf.toString().split(' ')
-  const message = `${parseInt(next)+parseInt(current)}`
-  // simple progress indicator for the viewer
-
-  
   await sender.send(message)
-  console.log(buf.toString(),`sent ${message}`);
+  console.log(`${current} + ${next}`, `sent ${message}`);
 });
 
-process.on('SIGINT', function() {
+process.on('SIGINT', function () {
   receiver.close();
   sender.close();
   process.exit();
