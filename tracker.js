@@ -89,12 +89,12 @@ async function* input_stream(stream = process.stdin, event = 'data') {
 
 const main = async () => {
   const input_message = 'Enter Positive Number:\t'
-  const error_message = 'Please Enter a valid number'
+  const error_message = 'Please Enter a valid number.'
   process.stdout.write(input_message)
   for await (const input of input_stream(process.stdin)) {
     const number = parseInt(input)
 
-    if (number) {
+    if (number > 1) {
       const generator = fib(Math.abs(number) || 0)
       for await (const num of generator) {
         console.log(num)
